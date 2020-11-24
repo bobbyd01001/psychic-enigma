@@ -1,0 +1,126 @@
+
+# Module imports
+import geoip2.database
+import geocoder
+import urllib.request
+import webbrowser
+from branca.element import Figure
+from folium import plugins
+import os
+import time
+import pygal
+import folium
+import geoip2
+from guizero import App, PushButton, Text, TextBox, Picture, Box
+
+# Variables
+home_path = os.environ['HOME']
+timestamp = time.asctime(time.localtime(time.time()))
+IP_logo = '{}path to image file'.format(home_path)
+db_path = '{}/path to/GeoLite2-City.mmdb'.format(home_path)
+isp_path = '{}/path to /GeoLite_DB/GeoLite2-ASN.mmdb'.format(home_path)
+html_file = '{}/path to store html file/ip_map.html'.format(home_path)
+reader = geoip2.database.Reader(db_path)
+isp_reader = geoip2.database.Reader(isp_path)
+public_ip = urllib.request.urlopen('http://ipecho.net/plain').read().decode('utf8')
+map_quest_key = "Map Quest API"  # Map_quest API key
+
+
+# Functions go here
+def ip_locate():
+    global result
+    global my_result
+    destination_ip = remote_ip_add.value
+    response = reader.city(destination_ip)
+    isp = isp_reader.asn(destination_ip)
+    my_response = reader.city(public_ip)
+    my_isp = isp_reader.asn(public_ip)
+    con_con = response.country.iso_code
+    r_lat = response.location.latitude
+    r_long = response.location.longitude
+    my_lat = my_response.location.latitude
+    my_long = my_response.location.longitude
+    local_ip = geocoder.mapquest([my_lat, my_long], method='reverse', key=map_quest_key)
+    remote_ip = geocoder.mapquest([r_lat, r_long], method='reverse', key=map_quest_key)
+    for result in remote_ip:
+        print()
+        print('-----------------')
+        print('REMOTE LOCATION')
+        print(result.address,
+              result.city,
+              result.state)
+    for my_result in local_ip:
+        print()
+        print('-----------------')
+        print('MY LOCATION')
+        print(my_result.address,
+              my_result.city,
+              my_result.state)
+    reader.close()
+    isp_reader.close()
+    worldmap_chart = pygal.maps.world.World()
+    worldmap_chart.title = 'IP Geolocation'
+    worldmap_chart.add('Remote IP', {str.lower(con_con): destination_ip})
+    worldmap_chart.add('My Location', {'us': public_ip})
+    worldmap_chart.render_in_browser()
+    fig = Figure(width=550, height=350)
+    ip_map = folium.Map(location=[r_lat, r_long], default_zoom_start=10)
+    fig.add_child(ip_map)
+    folium.TileLayer('Stamen Terrain').add_to(ip_map)
+    folium.TileLayer('Stamen Toner').add_to(ip_map)
+    folium.TileLayer('Stamen Water Color').add_to(ip_map)
+    folium.TileLayer('cartodbpositron').add_to(ip_map)
+    folium.TileLayer('cartodbdark_matter').add_to(ip_map)
+    folium.LayerControl().add_to(ip_map)
+    folium.Marker(  # add marker for destination ip address
+        location=[r_lat, r_long],
+        popup=f"""{destination_ip}
+               \n{result.address}
+               \n{response.city.name} 
+               \n{response.subdivisions.most_specific.name}""", width=len({result.address}) * 30,
+        tooltip=isp.autonomous_system_organization,
+
+    ).add_to(ip_map)
+    folium.Marker(   # add marker for public ip address location
+        location=[my_lat, my_long],
+        popup=f"""{public_ip}
+                   \n{my_response.city.name} 
+                   \n{my_response.subdivisions.most_specific.name}""", width=len({my_result.address}) * 30,
+        tooltip=my_isp.autonomous_system_organization,
+    ).add_to(ip_map)
+
+    folium.PolyLine(locations=[(my_lat, my_long), (r_lat, r_long)],  # plots line for each map point
+                    line_opacity=0.5).add_to(ip_map)
+    # added lat long to route
+    route_lats_longs = [[r_lat, r_long],  # Remote Location
+                        [my_lat, my_long]]  # Local Location
+    # Plotting ant-route
+    plugins.AntPath(route_lats_longs).add_to(ip_map)
+
+    ip_map.save(html_file, 'wb')
+    webbrowser.open_new_tab(html_file)
+
+
+def close_tracker_app():
+    """Open window 3 function"""
+    exit()
+
+
+# Main App Window BWIT APP
+app = App(title="BWIT IP Tracker")
+company_logo = Picture(app, image="{0}".format(IP_logo))
+Text(app, text="")
+content_box_2 = Box(app, align="top", width="fill")
+form_box = Box(content_box_2, layout="auto", width="fill", align="left", border=True)
+remote_ip_label = Text(form_box, text="REMOTE IP", align="left")
+remote_ip_add = TextBox(form_box, text="enter remote ip address you want to locate", width="fill")
+Text(app, text="")
+Text(app, text="My Public IP Address")
+Text(app, text=public_ip)
+Text(app, text="")
+create_map = PushButton(app, command=ip_locate, text="Create Map", width=20, height=1)
+exit_buttons_box = Box(app, width="fill", align="bottom")
+Text(exit_buttons_box, text="")
+PushButton(exit_buttons_box, command=close_tracker_app, text="Quit Program", align="right", width=20)
+
+app.display()
